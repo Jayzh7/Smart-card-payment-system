@@ -1,4 +1,4 @@
-CREATE PACKAGE Pkg_FSS_Settlement
+CREATE OR REPLACE PACKAGE Pkg_FSS_Settlement
 AS
     PROCEDURE DailySettlement;
     
