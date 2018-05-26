@@ -3,7 +3,7 @@ create table my_log (
     log_id   NUMBER,
     message  VARCHAR2(100));
 
-
+drop sequence seq_log_id;
 create sequence seq_log_id
 start with 1
 increment by 1;

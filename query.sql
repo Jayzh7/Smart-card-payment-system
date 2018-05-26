@@ -16,3 +16,12 @@ end;
 
 
 select * from FSS_DAILY_SETTLEMENT where LODGEREF IS NULL;
+
+select * from FSS_MERCHANT;
+
+select * from my_log;
+begin
+Pkg_FSS_Settlement.DailySettlement;
+Pkg_FSS_Settlement.DailyBankingSummary;
+--LOG_ME('123');
+end;
