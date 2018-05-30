@@ -1,4 +1,4 @@
-declare
+ declare
 v_file_name VARCHAR2(20);
 v_file  utl_file.file_type;
 v_date  VARCHAR2(20) := to_char(sysdate, 'DD-MON-YYYY HH24:MI:SS');
@@ -25,3 +25,8 @@ Pkg_FSS_Settlement.DailySettlement;
 Pkg_FSS_Settlement.DailyBankingSummary;
 --LOG_ME('123');
 end;
+
+
+ insert into FSS_RUN_TABLE (RUNID, RUNSTART, RUNEND)
+            values(0, sysdate, sysdate);
+        
