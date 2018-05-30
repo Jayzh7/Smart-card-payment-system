@@ -2,6 +2,11 @@ CREATE OR REPLACE PACKAGE BODY Pkg_FSS_Settlement
     
 IS
     LENGTH_OF_LINE NUMBER:= 80;
+    OUTCOME_FAIL VARCHAR2(15):= 'FAIL';
+    OUTCOME_SUCCESS VARCHAR2(15):= 'SUCCESS';
+    
+    REMARKS_FAIL VARCHAR2(40) := 'Already settled earlier today';
+    REMARKS_SUCCESS VARCHAR2(40) := 'Successfully Settled';
     
     FUNCTION f_sum_merchant(p_merchantID in FSS_MERCHANT.merchantid%type, p_date in varchar)
     return number
@@ -32,45 +37,60 @@ IS
     
     PROCEDURE SettleTransactions IS
         -- This cursor is used to assign a lodgement reference number to each settlement
+        v_lastRunDate DATE;
         CURSOR c_lod IS 
             select SETTLEDATE, MERCHANTID, LODGEREF from FSS_DAILY_SETTLEMENT s
             where s.LODGEREF IS NULL
             for update of s.lodgeref, s.settledate;
     BEGIN
-        -- Settle eligible transactions that has not been settled
-        insert into FSS_DAILY_SETTLEMENT (MERCHANTID, MERCHANTNAME, TOTALAMOUNT)
-        select m.merchantid, m.merchantlastname, sum(t.transactionamount)
-        from fss_daily_transactions t join fss_terminal ter on t.TERMINALID = ter.TERMINALID
-        join fss_merchant m on ter.MERCHANTID = m.merchantid
-        where t.lodgeref IS NULL
-        AND trunc(t.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
---        and trunc(t.downloaddate) IN (
---            select distinct trunc(DOWNLOADDATE) from FSS_DAILY_TRANSACTIONS transactions
---            where transactions.lodgeref IS NULL
---        )
-        group by m.merchantid, m.merchantlastname --, trunc(t.downloaddate)
-        having sum(t.transactionamount) > 7.75 ;-- trunc(t.transactiondate) < to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM');
-        
-        COMMIT;    
-        
-        for r_lod in c_lod LOOP
-            -- Update a lodge reference number for each settlement
-            update FSS_DAILY_SETTLEMENT    
-            SET LODGEREF = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.nextval, 10, '0'),
-            SETTLEDATE = trunc(sysdate)
-            where CURRENT OF c_lod;
-
-            -- Update a lodge reference number for settled transactions
-            update fss_daily_transactions trans
-            set trans.lodgeref = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.currval, 10, '0')
-            where trans.TERMINALID IN (
-                SELECT t.terminalid
-                from fss_terminal t join fss_merchant m on t.merchantid = m.merchantid
-                where m.merchantid = r_lod.merchantid)
-            AND trunc(trans.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
-            AND trans.lodgeref IS NULL;
+        -- Check run table
+        select RUNEND into v_lastRunDate from FSS_RUN_TABLE where (RUNID, RUNEND) in
+            ( select MAX(RUNEND) from FSS_RUN_TABLE group by RUNID);
+        if trunc(v_lastRunDate) = trunc(sysdate) then
+            insert into FSS_RUN_TABLE (RUNID, RUNSTART, RUNEND, OUTCOME, REMARKS)
+            values(seq_run_id.nextval, sysdate, sysdate, OUTCOME_FAIL, REMARKS_FAIL);
+        else
+            -- Insert fail log first, update later
+            insert into FSS_RUN_TABLE (RUNID, RUNSTART, OUTCOME, REMARKS)
+            values(seq_run_id.nextval, sysdate, OUTCOME_FAIL, REMARKS_FAIL);
             
-        END LOOP;
+            -- Settle eligible transactions that has not been settled
+            insert into FSS_DAILY_SETTLEMENT (MERCHANTID, MERCHANTNAME, TOTALAMOUNT)
+            select m.merchantid, m.merchantlastname, sum(t.transactionamount)
+            from fss_daily_transactions t join fss_terminal ter on t.TERMINALID = ter.TERMINALID
+            join fss_merchant m on ter.MERCHANTID = m.merchantid
+            where t.lodgeref IS NULL
+            AND trunc(t.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
+            group by m.merchantid, m.merchantlastname
+            having sum(t.transactionamount) > 7.75 ;
+            
+            COMMIT;    
+            
+            for r_lod in c_lod LOOP
+                -- Update a lodge reference number for each settlement
+                update FSS_DAILY_SETTLEMENT    
+                SET LODGEREF = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.nextval, 10, '0'),
+                SETTLEDATE = trunc(sysdate)
+                where CURRENT OF c_lod;
+    
+                -- Update a lodge reference number for settled transactions
+                update fss_daily_transactions trans
+                set trans.lodgeref = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.currval, 10, '0')
+                where trans.TERMINALID IN (
+                    SELECT t.terminalid
+                    from fss_terminal t join fss_merchant m on t.merchantid = m.merchantid
+                    where m.merchantid = r_lod.merchantid)
+                AND trunc(trans.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
+                AND trans.lodgeref IS NULL;
+                
+            END LOOP;
+            
+            -- Update the log to be successful
+            update FSS_RUN_TABLE
+            set RUNEND = sysdate, OUTCOME = OUTCOME_SUCCESS, REMARKS = REMARKS_SUCCESS
+            where RUNID in 
+                (select max(runid) from FSS_RUN_TABLE);
+        end if;
         COMMIT;
     END;
     

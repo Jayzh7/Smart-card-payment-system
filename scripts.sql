@@ -1,11 +1,13 @@
-create table run_log
+create table FSS_RUN_TABLE
 (runID NUMBER PRIMARY KEY,
- ModuleName VARCHAR2(35) NOT NULL,
- RunStartDate DATE NOT NULL,
- RunEndDate DATE,
- Outcome VARCHAR2(25),
- Comments VARCHAR2(255));
+ RunStart DATE NOT NULL,
+ RunEnd DATE,
+ Outcome VARCHAR2(15),
+ Remarks VARCHAR2(255));
  
+ DROP TABLE FSS_RUN_TABLE;
+ 
+ DROP TABLE RUN_LOG;
  create table FSS_DAILY_TRANSACTIONS
  (TRANSACTIONNR NUMBER,
   DOWNLOADDATE DATE,
@@ -39,6 +41,13 @@ DROP TABLE FSS_DAILY_SETTLEMENT;
 CREATE SEQUENCE seq_lodge_ref
 START WITH 1
 INCREMENT BY 1;
+
+CREATE SEQUENCE seq_run_id
+START WITH 1
+INCREMENT BY 1;
+
+DROP DIRECTORY MY_DIR;
+CREATE DIRECTORY MY_DIR as '/exports/orcloz';
 
 select * from FSS_TRANSACTIONS where trunc(downloaddate) = trunc(sysdate);
 
