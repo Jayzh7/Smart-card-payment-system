@@ -83,7 +83,7 @@ IS
             for r_lod in c_lod LOOP
                 -- Update a lodge reference number for each settlement
                 update FSS_DAILY_SETTLEMENT    
-                SET LODGEREF = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.nextval, 10, '0'),
+                SET LODGEREF = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.nextval, 8, '0'),
                 SETTLEDATE = trunc(sysdate)
                 where CURRENT OF c_lod;
     
@@ -181,12 +181,12 @@ IS
         v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
         -- Header
         v_print := '0' || RPAD(' ', 17, ' ') || '01WBC' || RPAD(' ', 7, ' ') || RPAD('S/CARD BUS PAYMENTS', 26, ' ') 
-                       || '038759' || RPAD('INVOICES', 12, ' ') || RPAD(to_char(p_date, 'DDMMYY'), 6, ' ');
+                       || '038759' || RPAD('INVOICES', 12, ' ') || RPAD(to_char(p_date, 'DDMMYY'), 6, ' ') || CHR(10);
         for r_merchants in c_merchants LOOP
             v_print := v_print || RECORD_TYPE;
             v_print := v_print || substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
                      r_merchants.MERCHANTBANKACCNR;
-            v_print := v_print || ' ' || DEBIT_CODE || RPAD(TO_CHAR(r_merchants.TOTALAMOUNT*100), 10, '0');
+            v_print := v_print || ' ' || DEBIT_CODE || LPAD(TO_CHAR(r_merchants.TOTALAMOUNT*100), 10, '0');
             v_print := v_print || RPAD(r_merchants.MERCHANTACCOUNTTITLE, 32, ' ');
             v_print := v_print || RPAD('F', 3, ' ');
             v_print := v_print || RPAD(r_merchants.LODGEREF, 15, ' ');
