@@ -37,16 +37,17 @@ IS
     
     PROCEDURE SettleTransactions IS
         -- This cursor is used to assign a lodgement reference number to each settlement
-        v_lastRunDate DATE;
+        v_runTimes NUMBER;
+        v_minimum NUMBER;
         CURSOR c_lod IS 
             select SETTLEDATE, MERCHANTID, LODGEREF from FSS_DAILY_SETTLEMENT s
             where s.LODGEREF IS NULL
             for update of s.lodgeref, s.settledate;
     BEGIN
         -- Check run table
-        select RUNEND into v_lastRunDate from FSS_RUN_TABLE where (RUNID, RUNEND) in
-            ( select MAX(RUNEND) from FSS_RUN_TABLE group by RUNID);
-        if trunc(v_lastRunDate) = trunc(sysdate) then
+        select count(*) into v_runTimes from FSS_RUN_TABLE where trunc(RUNEND) = trunc(sysdate) and OUTCOME=OUTCOME_SUCCESS;
+        
+        if v_runTimes >= 1 then
             insert into FSS_RUN_TABLE (RUNID, RUNSTART, RUNEND, OUTCOME, REMARKS)
             values(seq_run_id.nextval, sysdate, sysdate, OUTCOME_FAIL, REMARKS_FAIL);
         else
@@ -54,6 +55,12 @@ IS
             insert into FSS_RUN_TABLE (RUNID, RUNSTART, OUTCOME, REMARKS)
             values(seq_run_id.nextval, sysdate, OUTCOME_FAIL, REMARKS_FAIL);
             
+            -- Set minimum amount to be settled
+            if trunc(sysdate) = LAST_DAY(sysdate) then
+                v_minimum := 0;
+            else
+                select referencevalue into v_minimum from FSS_REFERENCE where referenceid = 'DMIN';
+            end if;
             -- Settle eligible transactions that has not been settled
             insert into FSS_DAILY_SETTLEMENT (MERCHANTID, MERCHANTNAME, TOTALAMOUNT)
             select m.merchantid, m.merchantlastname, sum(t.transactionamount)
@@ -62,7 +69,7 @@ IS
             where t.lodgeref IS NULL
             AND trunc(t.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
             group by m.merchantid, m.merchantlastname
-            having sum(t.transactionamount) > 7.75 ;
+            having sum(t.transactionamount) > v_minimum ;
             
             COMMIT;    
             
@@ -93,22 +100,6 @@ IS
         end if;
         COMMIT;
     END;
-    
---    PROCEDURE SettleMinimumTransactions IS
---        cursor c_min is 
---            select * from FSS_DAILY_TRANSACTIONS where downloaddate < to_date(sysdate, 'YYYY-MM')
---    BEGIN
---        -- if today is the end of the month
---        --   settle all this month's transactions
---        if trunc(sysdate) = trunc(LAST_DATE(sysdate))
---        then  
---        
---        end;
---        -- settle last month's transactons if there are any
---        
---        end;
---        
---    END;
     
     PROCEDURE CenterText(p_text IN VARCHAR2,
                          p_file IN utl_file.file_type) IS
@@ -181,23 +172,8 @@ IS
         -- THIRD, settle transactions for last month and update LOGREF
         -- SettleLastMonthTransactions;
     END;
-    
-    PROCEDURE DailyBankingSummary IS
-        v_file_name VARCHAR2(50);
-        v_file  utl_file.file_type;
-        v_sum NUMBER:=0;
-    BEGIN
-        v_file_name := '13029285_DSREP_' || to_char(sysdate, 'DDMMYYYY') || '.rpt';
-        v_file := utl_file.fopen('MY_DIR', v_file_name, 'W');
-        
-        PrintHeader(v_file, sysdate);
-        v_sum := PrintMerchants(v_file, sysdate);
-        PrintSum(v_file, v_sum);
-        PrintFooter(v_file, v_file_name);
-        utl_file.fclose(v_file);
-    END;
-    
-    PROCEDURE DailyBankingSummary(p_date IN VARCHAR2) IS
+
+    PROCEDURE DailyBankingSummary(p_date IN DATE default sysdate) IS
         v_file_name VARCHAR2(50);
         v_file utl_file.file_type;
         v_date DATE;
@@ -206,7 +182,7 @@ IS
     BEGIN
         v_date :=to_date(p_date, 'DD-MON-YYYY');
         v_file_name := '13029285_DSREP_' || to_char(v_date, 'DDMMYYYY') || '.rpt';
-        v_file := utl_file.fopen('MY_DIR', v_file_name, 'W');
+        v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
         
         PrintHeader(v_file, v_date);
         v_sum := PrintMerchants(v_file, v_date);
@@ -215,5 +191,10 @@ IS
         PrintFooter(v_file, v_file_name);
         utl_file.fclose(v_file);
     END;
+    
+--    PROCEDURE FraudReport IS
+--    BEGIN
+--        
+--    END;
         
 END Pkg_FSS_Settlement;

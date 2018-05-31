@@ -47,8 +47,10 @@ START WITH 1
 INCREMENT BY 1;
 
 DROP DIRECTORY MY_DIR;
-CREATE DIRECTORY MY_DIR as '/exports/orcloz';
+CREATE DIRECTORY ZJ_DIR as '/exports/orcloz';
 
+truncate table FSS_RUN_TABLE;
+DROP TABLE FSS_RUN_TABLE;
 select * from FSS_TRANSACTIONS where trunc(downloaddate) = trunc(sysdate);
 
 CREATE OR REPLACE TRIGGER tri_settlement_insert
@@ -62,4 +64,3 @@ BEGIN
 END tri_settlement_insert;
 
 drop trigger tri_settlement_insert;
-    
