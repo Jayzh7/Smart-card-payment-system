@@ -101,63 +101,79 @@ IS
         COMMIT;
     END;
     
-    PROCEDURE CenterText(p_text IN VARCHAR2,
-                         p_file IN utl_file.file_type) IS
-        v_padding NUMBER:= (LENGTH_OF_LINE - LENGTH(p_text))/2;
-    BEGIN
-        utl_file.put_line(p_file, LPAD(' ', v_padding, ' ') || p_text || LPAD(' ', v_padding, ' '));
-    END;
-    
-    PROCEDURE PrintHeader(p_file IN utl_file.file_type, p_date IN DATE) IS
-    BEGIN
-        CenterText('SMARTCARD SETTLEMENT SYSTEM', p_file);
-        CenterText('DAILY DESKBANK SUMMARY', p_file);
-        utl_file.put_line(p_file, 'Date ' || to_char(p_date, 'DD-Mon-YYYY'));
-        utl_file.put_line(p_file, RPAD('Merchant ID', 14, ' ') ||  RPAD('Merchant Name', 31, ' ') || RPAD('Account Number', 18, ' ') || LPAD('Debit', 11, ' ') || LPAD('Credit', 10, ' '));
-        utl_file.put_line(p_file, RPAD('-', 13, '-') || ' ' || RPAD('-', 30, '-') || ' ' || LPAD('-', 17, '-') || ' ' || LPAD('-', 10, '-') || ' ' ||  LPAD('-', 10, '-'));
-    END;
-    
-    PROCEDURE PrintFooter(p_file IN utl_file.file_type,
-                          p_name IN VARCHAR2) IS
-    BEGIN
-        utl_file.put_line(p_file, 'Deskbank file name : ' || p_name);
-        utl_file.put_line(p_file, 'Dispatch Date      : ' || to_char(sysdate, 'DD Mon YYYY')); 
-        utl_file.put_line(p_file, ' ');
-        CenterText('*****  End of Report  *****', p_file);
-    END;
-    
-    FUNCTION PrintMerchants(p_file IN utl_file.file_type,
-                             p_date IN DATE)
-    RETURN NUMBER 
+    FUNCTION CenterText(p_text IN VARCHAR2)
+    RETURN VARCHAR2
     IS
-        v_sum NUMBER:=0;
-        CURSOR c_merchants IS
-            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTLASTNAME, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID WHERE trunc(s.SETTLEDATE) = trunc(p_date);
+        v_padding NUMBER:= (LENGTH_OF_LINE - LENGTH(p_text))/2;
+        v_return VARCHAR2(100):='';
     BEGIN
-        for r_merchants in c_merchants LOOP
-            utl_file.put_line(p_file, RPAD(r_merchants.MERCHANTID, 13, ' ') || ' ' || RPAD(r_merchants.MERCHANTLASTNAME, 31, ' ')
-            || ' ' || RPAD(substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
-                     r_merchants.MERCHANTBANKACCNR, 16, ' ') || RPAD(' ', 11, ' ') || LPAD(r_merchants.TOTALAMOUNT, 10, ' '));
-            v_sum := v_sum + r_merchants.TOTALAMOUNT;
-        end loop;
-        return v_sum;
+        v_return := LPAD(' ', v_padding, ' ') || p_text || LPAD(' ', v_padding, ' ');
+        return v_return;
     END;
     
-    PROCEDURE PrintSum(p_file in utl_file.file_type,
-                       p_sum  in NUMBER)
+    FUNCTION PrintHeader(p_date IN DATE) 
+    RETURN VARCHAR2
+    IS
+        v_return VARCHAR2(1000) := '';
+    BEGIN
+        v_return := v_return || CenterText('SMARTCARD SETTLEMENT SYSTEM') || CHR(10);
+        v_return := v_return || CenterText('DAILY DESKBANK SUMMARY') || CHR(10);
+        v_return := v_return || 'Date ' || to_char(p_date, 'DD-Mon-YYYY') || CHR(10);
+        v_return := v_return || RPAD('Merchant ID', 14, ' ') ||  RPAD('Merchant Name', 31, ' ') || 
+                                RPAD('Account Number', 18, ' ') || LPAD('Debit', 11, ' ') || LPAD('Credit', 10, ' ') || CHR(10);
+        v_return := v_return || RPAD('-', 13, '-') || ' ' || RPAD('-', 30, '-') || ' ' || LPAD('-', 17, '-') || ' ' ||
+                                LPAD('-', 10, '-') || ' ' ||  LPAD('-', 10, '-') || CHR(10);
+        
+        return v_return;
+    END;
+    
+    FUNCTION PrintFooter(p_name IN VARCHAR2) 
+    RETURN VARCHAR2 
+    IS
+        v_return VARCHAR2(1000) := '';
+    BEGIN
+        v_return := v_return || 'Deskbank file name : ' || p_name || CHR(10);
+        v_return := v_return || 'Dispatch Date      : ' || to_char(sysdate, 'DD Mon YYYY') || CHR(10) || CHR(10);
+        v_return := v_return || CenterText('*****  End of Report  *****');
+        
+        return v_return;
+    END;
+    
+--    FUNCTION PrintMerchants(p_file IN utl_file.file_type,
+--                             p_date IN DATE)
+--    RETURN NUMBER 
+--    IS
+--        v_sum NUMBER:=0;
+--        CURSOR c_merchants IS
+--            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTLASTNAME, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID WHERE trunc(s.SETTLEDATE) = trunc(p_date);
+--    BEGIN
+--        for r_merchants in c_merchants LOOP
+--            utl_file.put_line(p_file, RPAD(r_merchants.MERCHANTID, 13, ' ') || ' ' || RPAD(r_merchants.MERCHANTLASTNAME, 31, ' ')
+--            || ' ' || RPAD(substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
+--                     r_merchants.MERCHANTBANKACCNR, 16, ' ') || RPAD(' ', 11, ' ') || LPAD(r_merchants.TOTALAMOUNT, 10, ' '));
+--            v_sum := v_sum + r_merchants.TOTALAMOUNT;
+--        end loop;
+--        return v_sum;
+--    END;
+    
+    FUNCTION PrintSum(p_sum  in NUMBER)
+    return VARCHAR2
     IS
         v_orgtitle VARCHAR2(15);
         v_accnr    VARCHAR2(20);
+        v_return   VARCHAR2(1000):= '';
     BEGIN
         select ORGACCOUNTTITLE into v_orgtitle from FSS_ORGANISATION;
         select substr(ORGBSBNR, 0, 3) || '-' || substr(ORGBSBNR, 3, 3) || ORGBANKACCOUNT into v_accnr from FSS_ORGANISATION;
             
-        utl_file.put_line(p_file, RPAD(' ', 13, ' ') || ' ' || RPAD(v_orgtitle, 31, ' ')
-            || ' ' || RPAD(v_accnr, 16, ' ') || LPAD(p_sum, 11, ' ') || LPAD(' ', 10, ' '));
-        utl_file.put_line(p_file, RPAD(' ', 13, ' ') || ' ' || RPAD(' ', 31, ' ')
-            || ' ' || RPAD(' ', 16, ' ') || LPAD(' ', 11, '-') || RPAD(' ', 10, '-'));
-        utl_file.put_line(p_file, RPAD('BALANCE TOTAL', 13, ' ') || ' ' || RPAD(' ', 31, ' ')
-            || ' ' || RPAD(' ', 16, ' ') || LPAD(p_sum, 11, ' ') || LPAD(p_sum, 10, ' '));
+        v_return := v_return || RPAD(' ', 13, ' ') || ' ' || RPAD(v_orgtitle, 31, ' ')
+            || ' ' || RPAD(v_accnr, 16, ' ') || LPAD(p_sum, 11, ' ') || LPAD(' ', 10, ' ') || CHR(10);
+        v_return := v_return || RPAD(' ', 13, ' ') || ' ' || RPAD(' ', 31, ' ')
+            || ' ' || RPAD(' ', 16, ' ') || LPAD(' ', 11, '-') || RPAD(' ', 10, '-') || CHR(10);
+        v_return := v_return || RPAD('BALANCE TOTAL', 13, ' ') || ' ' || RPAD(' ', 31, ' ')
+            || ' ' || RPAD(' ', 16, ' ') || LPAD(p_sum, 11, ' ') || LPAD(p_sum, 10, ' ') || CHR(10);
+            
+        return v_return;
     END;
  
     
@@ -177,24 +193,34 @@ IS
         v_file_name VARCHAR2(50);
         v_file utl_file.file_type;
         v_date DATE;
-        
-        v_sum NUMBER;
+        v_print VARCHAR2(4000);
+        v_sum NUMBER:=0;
+        CURSOR c_merchants IS
+            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTLASTNAME, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR 
+            FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
+            WHERE trunc(s.SETTLEDATE) = trunc(p_date);
     BEGIN
         v_date :=to_date(p_date, 'DD-MON-YYYY');
         v_file_name := '13029285_DSREP_' || to_char(v_date, 'DDMMYYYY') || '.rpt';
         v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
         
-        PrintHeader(v_file, v_date);
-        v_sum := PrintMerchants(v_file, v_date);
+        v_print := v_print || PrintHeader(v_date);
+--        v_sum := PrintMerchants(v_file, v_date);
+        for r_merchants in c_merchants LOOP
+            v_print := v_print ||  RPAD(r_merchants.MERCHANTID, 13, ' ') || ' ' || RPAD(r_merchants.MERCHANTLASTNAME, 31, ' ')
+            || ' ' || RPAD(substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
+                     r_merchants.MERCHANTBANKACCNR, 16, ' ') || RPAD(' ', 11, ' ') || LPAD(r_merchants.TOTALAMOUNT, 10, ' ') || CHR(10);
+            v_sum := v_sum + r_merchants.TOTALAMOUNT;
+        end loop;
         
-        PrintSum(v_file, v_sum);
-        PrintFooter(v_file, v_file_name);
+        v_print := v_print || PrintSum(v_sum);
+        v_print := v_print || PrintFooter(v_file_name);
+        
+        utl_file.put_line(v_file, v_print);
+        
         utl_file.fclose(v_file);
     END;
-    
---    PROCEDURE FraudReport IS
---    BEGIN
---        
---    END;
+
+--    PROCEDURE Daily
         
 END Pkg_FSS_Settlement;
