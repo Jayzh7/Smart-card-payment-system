@@ -165,6 +165,46 @@ IS
             
         return v_return;
     END;
+    PROCEDURE DeskbankFile(p_date IN DATE)
+    IS
+        v_print VARCHAR2(4000):= '';
+        v_sum   NUMBER:= 0;
+        v_cnt   NUMBER:= 0;
+        v_file_name VARCHAR2(50);
+        v_file utl_file.file_type;
+        CURSOR c_merchants IS
+            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTACCOUNTTITLE, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR, s.LODGEREF
+            FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
+            WHERE trunc(s.SETTLEDATE) = trunc(p_date);
+    BEGIN
+        v_file_name := '13029285' || '_DS_' || to_char(p_date, 'DDMMYYYY') || '.dat';
+        v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
+        -- Header
+        v_print := '0' || RPAD(' ', 17, ' ') || '01WBC' || RPAD(' ', 7, ' ') || RPAD('S/CARD BUS PAYMENTS', 26, ' ') 
+                       || '038759' || RPAD('INVOICES', 12, ' ') || RPAD(to_char(p_date, 'DDMMYY'), 6, ' ');
+        for r_merchants in c_merchants LOOP
+            v_print := v_print || RECORD_TYPE;
+            v_print := v_print || substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
+                     r_merchants.MERCHANTBANKACCNR;
+            v_print := v_print || ' ' || DEBIT_CODE || RPAD(TO_CHAR(r_merchants.TOTALAMOUNT*100), 10, '0');
+            v_print := v_print || RPAD(r_merchants.MERCHANTACCOUNTTITLE, 32, ' ');
+            v_print := v_print || RPAD('F', 3, ' ');
+            v_print := v_print || RPAD(r_merchants.LODGEREF, 15, ' ');
+            v_print := v_print || '032-797   001005';
+            v_print := v_print || 'SMARTCARD TRANS   ';
+            v_print := v_print || LPAD('0', 8, '0');
+            v_print := v_print || CHR(10);
+            v_cnt := v_cnt + 1;
+            v_sum := v_sum + r_merchants.TOTALAMOUNT;
+        end loop;
+        
+        v_print := v_print || FOOTER_TYPE || FOOTER_FILLER || LPAD(' ', 12, ' ');
+        v_print := v_print || LPAD('0', 10, '0') || LPAD(TO_CHAR(v_sum), 10, '0') || LPAD(TO_CHAR(v_sum), 10, '0');
+        v_print := v_print || LPAD(' ', 24, ' ') || LPAD(TO_CHAR(v_cnt), 6, '0');
+        
+        utl_file.put_line(v_file, v_print);
+        utl_file.fclose(v_file);
+    END;
  
     
     PROCEDURE DailySettlement IS
@@ -174,15 +214,14 @@ IS
         
         -- SECOND, settle transactions for today and update LOGREF
         SettleTransactions;
-        
+  
         -- THIRD, settle transactions for last month and update LOGREF
-        -- SettleLastMonthTransactions;
+--         SettleLastMonthTransactions;
     END;
 
     PROCEDURE DailyBankingSummary(p_date IN DATE default sysdate) IS
         v_file_name VARCHAR2(50);
         v_file utl_file.file_type;
-        v_date DATE;
         v_print VARCHAR2(4000);
         v_sum NUMBER:=0;
         CURSOR c_merchants IS
@@ -190,12 +229,11 @@ IS
             FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
             WHERE trunc(s.SETTLEDATE) = trunc(p_date);
     BEGIN
-        v_date :=to_date(p_date, 'DD-MON-YYYY');
-        v_file_name := '13029285_DSREP_' || to_char(v_date, 'DDMMYYYY') || '.rpt';
+        v_file_name := '13029285_DSREP_' || to_char(p_date, 'DDMMYYYY') || '.rpt';
         v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
         
-        v_print := v_print || PrintHeader(v_date);
---        v_sum := PrintMerchants(v_file, v_date);
+        v_print := v_print || PrintHeader(p_date);
+--        v_sum := PrintMerchants(v_file, p_date);
         for r_merchants in c_merchants LOOP
             v_print := v_print ||  RPAD(r_merchants.MERCHANTID, 13, ' ') || ' ' || RPAD(r_merchants.MERCHANTLASTNAME, 31, ' ')
             || ' ' || RPAD(substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
@@ -208,37 +246,10 @@ IS
         
         utl_file.put_line(v_file, v_print);
         
+        DeskbankFile(p_date);
         utl_file.fclose(v_file);
     END;
 
-    PROCEDURE DeskbankFile
-    IS
-        v_print VARCHAR2(4000):= '';
-        v_sum   NUMBER:= 0;
-        CURSOR c_merchants IS
-            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTACCOUNTTITLE, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR, s.LODGEREF
-            FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
-            WHERE trunc(s.SETTLEDATE) = trunc(p_date);
-    BEGIN
-        -- Header
-        v_print := '0' || RPAD(' ', 17, ' ') || '01WBC' || RPAD(' ', 7, ' ') || RPAD('S/CARD BUS PAYMENTS', 26, ' ') 
-                       || '038759' || RPAD('INVOICES', 12, ' ') || RPAD(to_char(sysdate, 'DDMMYY'), 6, ' ');
-        for r_merchants in c_merchants LOOP
-            v_print := v_print || RECORD_TYPE;
-            v_print := v_print || substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
-                     r_merchants.MERCHANTBANKACCNR;
-            v_print := v_print || ' ' || DEBIT_CODE || RPAD(str(r_merchants.TOTALAMOUNT*10), 10, '0');
-            v_print := v_print || RPAD(r_merchants.MERCHANTACCOUNTTITLE, 32, ' ');
-            v_print := v_print || RPAD('F', 3, ' ');
-            v_print := v_print || RPAD(r_merchants.LODGEREF, 15, ' ');
-            v_print := v_print || '032-797   001005';
-            v_print := v_print || 'SMARTCARD TRANS   ';
-            v_print := v_print || LPAD('0', 8, '0');
-            v_print := v_print || CHR(10);
-            v_sum := v_sum + r_merchants.TOTALAMOUNT;
-        end loop;
-        
-        v_print := v_print || FOOTER_TYPE || FOOTER_FILLER;
-    END;
+    
         
 END Pkg_FSS_Settlement;
