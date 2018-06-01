@@ -68,13 +68,14 @@ IS
             else
                 select referencevalue into v_minimum from FSS_REFERENCE where referenceid = 'DMIN';
             end if;
+            
             -- Settle eligible transactions that has not been settled
             insert into FSS_DAILY_SETTLEMENT (MERCHANTID, MERCHANTNAME, TOTALAMOUNT)
             select m.merchantid, m.merchantlastname, sum(t.transactionamount)
             from fss_daily_transactions t join fss_terminal ter on t.TERMINALID = ter.TERMINALID
             join fss_merchant m on ter.MERCHANTID = m.merchantid
             where t.lodgeref IS NULL
-            AND trunc(t.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
+--            AND trunc(t.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
             group by m.merchantid, m.merchantlastname
             having sum(t.transactionamount) > v_minimum ;
             
@@ -83,7 +84,7 @@ IS
             for r_lod in c_lod LOOP
                 -- Update a lodge reference number for each settlement
                 update FSS_DAILY_SETTLEMENT    
-                SET LODGEREF = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.nextval, 8, '0'),
+                SET LODGEREF = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.nextval, 7, '0'),
                 SETTLEDATE = trunc(sysdate)
                 where CURRENT OF c_lod;
     
@@ -94,7 +95,7 @@ IS
                     SELECT t.terminalid
                     from fss_terminal t join fss_merchant m on t.merchantid = m.merchantid
                     where m.merchantid = r_lod.merchantid)
-                AND trunc(trans.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
+--                AND trunc(trans.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
                 AND trans.lodgeref IS NULL;
                 
             END LOOP;
