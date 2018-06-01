@@ -5,6 +5,13 @@ IS
     OUTCOME_FAIL VARCHAR2(15):= 'FAIL';
     OUTCOME_SUCCESS VARCHAR2(15):= 'SUCCESS';
     
+    RECORD_TYPE VARCHAR2(1) := '1';
+    FOOTER_TYPE VARCHAR2(1) := '7';
+    FOOTER_FILLER VARCHAR(7) := '999-999';
+    
+    DEBIT_CODE  VARCHAR2(2) := '13';
+    CREDIT_CODE VARCHAR2(2) := '50';
+    
     REMARKS_FAIL VARCHAR2(40) := 'Already settled earlier today';
     REMARKS_SUCCESS VARCHAR2(40) := 'Successfully Settled';
     
@@ -61,13 +68,14 @@ IS
             else
                 select referencevalue into v_minimum from FSS_REFERENCE where referenceid = 'DMIN';
             end if;
+            
             -- Settle eligible transactions that has not been settled
             insert into FSS_DAILY_SETTLEMENT (MERCHANTID, MERCHANTNAME, TOTALAMOUNT)
             select m.merchantid, m.merchantlastname, sum(t.transactionamount)
             from fss_daily_transactions t join fss_terminal ter on t.TERMINALID = ter.TERMINALID
             join fss_merchant m on ter.MERCHANTID = m.merchantid
             where t.lodgeref IS NULL
-            AND trunc(t.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
+--            AND trunc(t.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
             group by m.merchantid, m.merchantlastname
             having sum(t.transactionamount) > v_minimum ;
             
@@ -76,7 +84,7 @@ IS
             for r_lod in c_lod LOOP
                 -- Update a lodge reference number for each settlement
                 update FSS_DAILY_SETTLEMENT    
-                SET LODGEREF = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.nextval, 10, '0'),
+                SET LODGEREF = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.nextval, 7, '0'),
                 SETTLEDATE = trunc(sysdate)
                 where CURRENT OF c_lod;
     
@@ -87,7 +95,7 @@ IS
                     SELECT t.terminalid
                     from fss_terminal t join fss_merchant m on t.merchantid = m.merchantid
                     where m.merchantid = r_lod.merchantid)
-                AND trunc(trans.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
+--                AND trunc(trans.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
                 AND trans.lodgeref IS NULL;
                 
             END LOOP;
@@ -139,23 +147,6 @@ IS
         return v_return;
     END;
     
---    FUNCTION PrintMerchants(p_file IN utl_file.file_type,
---                             p_date IN DATE)
---    RETURN NUMBER 
---    IS
---        v_sum NUMBER:=0;
---        CURSOR c_merchants IS
---            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTLASTNAME, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID WHERE trunc(s.SETTLEDATE) = trunc(p_date);
---    BEGIN
---        for r_merchants in c_merchants LOOP
---            utl_file.put_line(p_file, RPAD(r_merchants.MERCHANTID, 13, ' ') || ' ' || RPAD(r_merchants.MERCHANTLASTNAME, 31, ' ')
---            || ' ' || RPAD(substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
---                     r_merchants.MERCHANTBANKACCNR, 16, ' ') || RPAD(' ', 11, ' ') || LPAD(r_merchants.TOTALAMOUNT, 10, ' '));
---            v_sum := v_sum + r_merchants.TOTALAMOUNT;
---        end loop;
---        return v_sum;
---    END;
-    
     FUNCTION PrintSum(p_sum  in NUMBER)
     return VARCHAR2
     IS
@@ -175,6 +166,46 @@ IS
             
         return v_return;
     END;
+    PROCEDURE DeskbankFile(p_date IN DATE)
+    IS
+        v_print VARCHAR2(4000):= '';
+        v_sum   NUMBER:= 0;
+        v_cnt   NUMBER:= 0;
+        v_file_name VARCHAR2(50);
+        v_file utl_file.file_type;
+        CURSOR c_merchants IS
+            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTACCOUNTTITLE, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR, s.LODGEREF
+            FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
+            WHERE trunc(s.SETTLEDATE) = trunc(p_date);
+    BEGIN
+        v_file_name := '13029285' || '_DS_' || to_char(p_date, 'DDMMYYYY') || '.dat';
+        v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
+        -- Header
+        v_print := '0' || RPAD(' ', 17, ' ') || '01WBC' || RPAD(' ', 7, ' ') || RPAD('S/CARD BUS PAYMENTS', 26, ' ') 
+                       || '038759' || RPAD('INVOICES', 12, ' ') || RPAD(to_char(p_date, 'DDMMYY'), 6, ' ') || CHR(10);
+        for r_merchants in c_merchants LOOP
+            v_print := v_print || RECORD_TYPE;
+            v_print := v_print || substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
+                     r_merchants.MERCHANTBANKACCNR;
+            v_print := v_print || ' ' || DEBIT_CODE || LPAD(TO_CHAR(r_merchants.TOTALAMOUNT*100), 10, '0');
+            v_print := v_print || RPAD(r_merchants.MERCHANTACCOUNTTITLE, 32, ' ');
+            v_print := v_print || RPAD('F', 3, ' ');
+            v_print := v_print || RPAD(r_merchants.LODGEREF, 15, ' ');
+            v_print := v_print || '032-797   001005';
+            v_print := v_print || 'SMARTCARD TRANS   ';
+            v_print := v_print || LPAD('0', 8, '0');
+            v_print := v_print || CHR(10);
+            v_cnt := v_cnt + 1;
+            v_sum := v_sum + r_merchants.TOTALAMOUNT;
+        end loop;
+        
+        v_print := v_print || FOOTER_TYPE || FOOTER_FILLER || LPAD(' ', 12, ' ');
+        v_print := v_print || LPAD('0', 10, '0') || LPAD(TO_CHAR(v_sum), 10, '0') || LPAD(TO_CHAR(v_sum), 10, '0');
+        v_print := v_print || LPAD(' ', 24, ' ') || LPAD(TO_CHAR(v_cnt), 6, '0');
+        
+        utl_file.put_line(v_file, v_print);
+        utl_file.fclose(v_file);
+    END;
  
     
     PROCEDURE DailySettlement IS
@@ -184,15 +215,14 @@ IS
         
         -- SECOND, settle transactions for today and update LOGREF
         SettleTransactions;
-        
+  
         -- THIRD, settle transactions for last month and update LOGREF
-        -- SettleLastMonthTransactions;
+--         SettleLastMonthTransactions;
     END;
 
     PROCEDURE DailyBankingSummary(p_date IN DATE default sysdate) IS
         v_file_name VARCHAR2(50);
         v_file utl_file.file_type;
-        v_date DATE;
         v_print VARCHAR2(4000);
         v_sum NUMBER:=0;
         CURSOR c_merchants IS
@@ -200,12 +230,11 @@ IS
             FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
             WHERE trunc(s.SETTLEDATE) = trunc(p_date);
     BEGIN
-        v_date :=to_date(p_date, 'DD-MON-YYYY');
-        v_file_name := '13029285_DSREP_' || to_char(v_date, 'DDMMYYYY') || '.rpt';
+        v_file_name := '13029285_DSREP_' || to_char(p_date, 'DDMMYYYY') || '.rpt';
         v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
         
-        v_print := v_print || PrintHeader(v_date);
---        v_sum := PrintMerchants(v_file, v_date);
+        v_print := v_print || PrintHeader(p_date);
+--        v_sum := PrintMerchants(v_file, p_date);
         for r_merchants in c_merchants LOOP
             v_print := v_print ||  RPAD(r_merchants.MERCHANTID, 13, ' ') || ' ' || RPAD(r_merchants.MERCHANTLASTNAME, 31, ' ')
             || ' ' || RPAD(substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
@@ -218,9 +247,10 @@ IS
         
         utl_file.put_line(v_file, v_print);
         
+        DeskbankFile(p_date);
         utl_file.fclose(v_file);
     END;
 
---    PROCEDURE Daily
+    
         
 END Pkg_FSS_Settlement;
