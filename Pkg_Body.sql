@@ -90,7 +90,7 @@ IS
     
                 -- Update a lodge reference number for settled transactions
                 update fss_daily_transactions trans
-                set trans.lodgeref = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.currval, 10, '0')
+                set trans.lodgeref = to_char(sysdate, 'MMDDYYYY') || LPAD(seq_lodge_ref.currval, 7, '0')
                 where trans.TERMINALID IN (
                     SELECT t.terminalid
                     from fss_terminal t join fss_merchant m on t.merchantid = m.merchantid
