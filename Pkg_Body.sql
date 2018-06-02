@@ -251,6 +251,35 @@ IS
         utl_file.fclose(v_file);
     END;
 
+    PROCEDURE FRAUDREPORT
+    IS
+    v_previous NUMBER:=-1;
+    cursor c_cardid is 
+        select distinct cardid from FSS_DAILY_TRANSACTIONS;
+    cursor c_payments(p_cardid VARCHAR2) is
+        select * from FSS_DAILY_TRANSACTIONS where cardid=p_cardid order by transactiondate ASC;
+    BEGIN
+        for r_cardid in c_cardid loop
+            v_previous := -1;
+            for r_payments in c_payments(r_cardid.cardid) loop
+                if v_previous != -1 then
+                    if r_payments.cardoldvalue != v_previous then
+                        -- report fraud
+                        INSERT INTO FSS_ABNORMAL_ACCOUNTS (TRANSACTIONNR)
+                        VALUES(r_payments.TRANSACTIONNR);
+                        COMMIT;
+                    end if;
+                    if r_payments.cardoldvalue - r_payments.transactionamount != r_payments.cardnewvalue then
+                        -- report fraud
+                        INSERT INTO FSS_ABNORMAL_TRANSACTIONS (TRANSACTIONNR)
+                        VALUES(r_payments.TRANSACTIONNR);
+                        COMMIT;
+                    end if;
+                end if;
+                v_previous := r_payments.cardnewvalue;
+            end loop;
+        end loop;
+    END;
     
         
 END Pkg_FSS_Settlement;
