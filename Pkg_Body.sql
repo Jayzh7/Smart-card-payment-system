@@ -113,12 +113,12 @@ IS
     PROCEDURE InsertTransactions IS
     BEGIN
         insert into FSS_DAILY_TRANSACTIONS (TRANSACTIONNR, DOWNLOADDATE, TERMINALID, CARDID, TRANSACTIONDATE,
-            CARDOLDVALUE, TRANSACTIONAMOUNT, CARDNEWVALUE, TRANSACTIONSTATUS, ERRORCODE)
-            select TRANSACTIONNR, DOWNLOADDATE, TERMINALID, CARDID, TRANSACTIONDATE,
-            CARDOLDVALUE, TRANSACTIONAMOUNT, CARDNEWVALUE, TRANSACTIONSTATUS, ERRORCODE
-            from FSS_TRANSACTIONS 
-            where not exists (select 1 from FSS_DAILY_TRANSACTIONS t2 where FSS_TRANSACTIONS.transactionnr = t2.transactionnr);
-        
+        CARDOLDVALUE, TRANSACTIONAMOUNT, CARDNEWVALUE, TRANSACTIONSTATUS, ERRORCODE)
+        select TRANSACTIONNR, DOWNLOADDATE, TERMINALID, CARDID, TRANSACTIONDATE,
+        CARDOLDVALUE, TRANSACTIONAMOUNT, CARDNEWVALUE, TRANSACTIONSTATUS, ERRORCODE
+        from FSS_TRANSACTIONS 
+        where not exists (select 1 from FSS_DAILY_TRANSACTIONS t2 where FSS_TRANSACTIONS.transactionnr = t2.transactionnr);
+    
         COMMIT;
     END;
     
@@ -326,8 +326,8 @@ IS
     
     PROCEDURE DailySettlement 
     IS    
-        v_db_name VARCHAR2(50):= '13029285' || '_DS_' || to_char(sysdate, 'DDMMYYYY') || '.dat';
-        v_bs_name VARCHAR2(50):= '13029285' || '_DSREP_' || to_char(sysdate, 'DDMMYYYY') || '.rpt';
+        v_db_name VARCHAR2(50);
+        v_bs_name VARCHAR2(50);
     BEGIN
         -- FIRST, insert transactions that have not been loaded into FSS_DAILY_TRANSACRIONS
         InsertTransactions;
@@ -337,6 +337,9 @@ IS
         
         DeskbankFile(trunc(sysdate));
     
+        v_db_name := '13029285' || '_DS_' || to_char(sysdate, 'DDMMYYYY') || '.dat';
+        v_bs_name := '13029285' || '_DSREP_' || to_char(sysdate, 'DDMMYYYY') || '.rpt';
+        
         Send_email(EMAIL_TO,
                    EMAIL_FROM,
                    EMAIL_SUBJECT,
