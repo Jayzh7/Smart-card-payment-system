@@ -1,6 +1,18 @@
 CREATE OR REPLACE PACKAGE BODY Pkg_FSS_Settlement
     
 IS
+    EMAIL_TO VARCHAR2(50) := 'jayzh7@hotmail.com';
+    EMAIL_FROM VARCHAR2(50) := 'procedure@uts.edu.au';
+    EMAIL_SUBJECT VARCHAR2(50) := 'Settlement reports';
+    EMAIL_TEXT_MSG VARCHAR2(200) := 'Sent From the OMS Database by the PL/SQL application' || CHR(10) ||
+                                    'The report data is in the attached files' || CHR(10) || CHR(10) ||
+                                    'Regards' || CHR(10) ||
+                                    'The OMS Database' || CHR(10);
+                                    
+    EMAIL_BS_NAME VARCHAR2(50) := 'Daily Banking Summary-';
+    EMAIL_DF_NAME VARCHAR2(50) := 'Deskbank File-';
+    EMAIL_SUFFIX VARCHAR2(10)  := '.txt';
+    
     LENGTH_OF_LINE NUMBER:= 80;
     OUTCOME_FAIL VARCHAR2(15):= 'FAIL';
     OUTCOME_SUCCESS VARCHAR2(15):= 'SUCCESS';
@@ -15,21 +27,89 @@ IS
     REMARKS_FAIL VARCHAR2(40) := 'Already settled earlier today';
     REMARKS_SUCCESS VARCHAR2(40) := 'Successfully Settled';
     
-    FUNCTION f_sum_merchant(p_merchantID in FSS_MERCHANT.merchantid%type, p_date in varchar)
-    return number
-    is
-    --
-    v_sum number:= 0;
-    --
-    begin
-        select sum(tr.transactionamount)  into v_sum from FSS_DAILY_TRANSACTIONS tr , FSS_TERMINAL te, FSS_MERCHANT me
-        where tr.terminalid = te.terminalid
-        and te.merchantid = me.merchantid
-        and trunc(tr.TRANSACTIONDATE) = trunc(to_date(p_date, 'DD-MON-YYYY'))
-        and me.merchantid = p_merchantid;
-        return v_sum;
-    end;
+    procedure send_email(  p_to            IN VARCHAR2,
+                           p_from          IN VARCHAR2,
+                           p_subject       IN VARCHAR2,
+                           p_text_msg      IN VARCHAR2,
+                           p_attach_name_1 IN VARCHAR2,
+                           p_attach_msg_1  IN VARCHAR2,
+                           p_attach_name_2 IN VARCHAR2,
+                           p_attach_msg_2  IN VARCHAR2)
+    as
+    v_mailhost VARCHAR2(50) := 'postoffice.uts.edu.au';
+    v_boundary VARCHAR2(50) := 'MY BOUNDARY';
     
+    mail_conn       UTL_SMTP.connection;
+    v_proc_name  VARCHAR2(50) := 'send_email';
+    v_recipient_list  VARCHAR2(2000);
+    v_recipient   VARCHAR2(80);
+    v_counter     NUMBER := 0;
+    con_nl VARCHAR2(2) := CHR(13)||CHR(10);
+    con_email_footer VARCHAR2(250) := 'This is the email footer';
+    --
+    procedure log(p_message VARCHAR2) is
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE(p_message);
+    END;
+    --
+    --
+    BEGIN
+    --     v_recipient_list := REPLACE(p_recipient, ' ');  --get rid of any spaces so that it's easier to split up
+    mail_conn := UTL_SMTP.open_connection (v_mailhost, 25);
+    UTL_SMTP.helo (mail_conn, v_mailhost);
+    UTL_SMTP.mail (mail_conn, p_from);
+    UTL_SMTP.rcpt (mail_conn, p_to);
+    UTL_SMTP.open_data (mail_conn);
+    --         
+    UTL_SMTP.write_data(mail_conn, 'From' || ':' || p_from || con_nl);
+    UTL_SMTP.write_data(mail_conn, 'To'   || ':' || p_to   || con_nl);
+    UTL_SMTP.write_data(mail_conn, 'Subject:'    || p_subject || con_nl);
+    UTL_SMTP.write_data(mail_conn, 'MIME-Version: 1.0' || con_nl);
+    UTL_SMTP.write_data(mail_conn, 'Content-Type: multipart/mixed; boundary="' || v_boundary || '"' || con_nl);
+    
+    if p_text_msg IS NOT NULL
+    then
+    UTL_SMTP.write_data(mail_conn, '--' || v_boundary || con_nl);
+    UTL_SMTP.write_data(mail_conn, 'Content-Type: text/plain; charset="us-ascii"' || con_nl || con_nl);
+    
+    UTL_SMTP.write_data(mail_conn, p_text_msg || con_nl || con_nl);
+    end if;
+    
+    if p_attach_name_2 IS NOT NULL 
+    then
+        if p_attach_msg_2 IS NOT NULL
+        then 
+            UTL_SMTP.write_data(mail_conn, con_nl || '--' || v_boundary || con_nl);
+            UTL_SMTP.write_data(mail_conn, 'Content-Type: application/octet-stream; name="' || p_attach_name_2 || '"' || con_nl);
+            UTL_SMTP.write_data(mail_conn, 'Content-Transfer-Encoding: 7bit' || con_nl || con_nl);
+            UTL_SMTP.write_data(mail_conn, p_attach_msg_2 || con_nl || con_nl);
+        --                
+        --                UTL_SMTP.write_data(mail_conn, '--' || v_boundary || con_nl);
+        end if;
+    end if;
+        
+    if p_attach_name_1 IS NOT NULL 
+    then
+        if p_attach_msg_1 IS NOT NULL
+        then 
+            UTL_SMTP.write_data(mail_conn, '--' || v_boundary || con_nl);
+            UTL_SMTP.write_data(mail_conn, 'Content-Type: application/octet-stream; name="' || p_attach_name_1 || '"' || con_nl);
+            UTL_SMTP.write_data(mail_conn, 'Content-Transfer-Encoding: 7bit' || con_nl || con_nl);
+            UTL_SMTP.write_data(mail_conn, p_attach_msg_1 || con_nl || con_nl);
+        --                
+            UTL_SMTP.write_data(mail_conn, '--' || v_boundary || '--' || con_nl);
+        end if;
+    end if;
+    
+    UTL_SMTP.close_data (mail_conn);
+    UTL_SMTP.quit (mail_conn);
+    log('Email sent, check your inbox');
+    EXCEPTION
+       WHEN OTHERS THEN
+          log('Error occured in send_email with '||con_nl||SQLERRM);
+          UTL_SMTP.close_data (mail_conn);
+    END;
+
     PROCEDURE InsertTransactions IS
     BEGIN
         insert into FSS_DAILY_TRANSACTIONS (TRANSACTIONNR, DOWNLOADDATE, TERMINALID, CARDID, TRANSACTIONDATE,
@@ -75,7 +155,6 @@ IS
             from fss_daily_transactions t join fss_terminal ter on t.TERMINALID = ter.TERMINALID
             join fss_merchant m on ter.MERCHANTID = m.merchantid
             where t.lodgeref IS NULL
---            AND trunc(t.transactiondate) >= to_date(to_char(sysdate, 'YYYY-MM'), 'YYYY-MM')
             group by m.merchantid, m.merchantlastname
             having sum(t.transactionamount) > v_minimum ;
             
@@ -166,21 +245,46 @@ IS
             
         return v_return;
     END;
-    PROCEDURE DeskbankFile(p_date IN DATE)
+    
+    FUNCTION PrintSummary(p_date IN DATE,
+                          p_file_name IN VARCHAR2)
+    RETURN VARCHAR2
+    IS
+        v_print VARCHAR2(4000);
+        v_sum NUMBER:=0;
+        CURSOR c_merchants IS
+            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTLASTNAME, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR 
+            FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
+            WHERE trunc(s.SETTLEDATE) = trunc(p_date);
+    BEGIN
+        v_print := v_print || PrintHeader(p_date);
+        
+        for r_merchants in c_merchants LOOP
+            v_print := v_print ||  RPAD(r_merchants.MERCHANTID, 13, ' ') || ' ' || RPAD(r_merchants.MERCHANTLASTNAME, 31, ' ')
+            || ' ' || RPAD(substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
+                     r_merchants.MERCHANTBANKACCNR, 16, ' ') || RPAD(' ', 11, ' ') || LPAD(r_merchants.TOTALAMOUNT, 10, ' ') || CHR(10);
+            v_sum := v_sum + r_merchants.TOTALAMOUNT;
+        end loop;
+        
+        v_print := v_print || PrintSum(v_sum);
+        v_print := v_print || PrintFooter(p_file_name);
+        
+        return v_print;
+    END;
+    
+    --TODO insert credit record
+    FUNCTION PrintDeskbankFile(p_date IN DATE)
+    RETURN VARCHAR2
     IS
         v_print VARCHAR2(4000):= '';
         v_sum   NUMBER:= 0;
         v_cnt   NUMBER:= 0;
-        v_file_name VARCHAR2(50);
-        v_file utl_file.file_type;
         CURSOR c_merchants IS
-            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTACCOUNTTITLE, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR, s.LODGEREF
-            FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
-            WHERE trunc(s.SETTLEDATE) = trunc(p_date);
+                SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTACCOUNTTITLE, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR, s.LODGEREF
+                FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
+                WHERE trunc(s.SETTLEDATE) = trunc(p_date);
     BEGIN
-        v_file_name := '13029285' || '_DS_' || to_char(p_date, 'DDMMYYYY') || '.dat';
-        v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
-        -- Header
+         -- Header
         v_print := '0' || RPAD(' ', 17, ' ') || '01WBC' || RPAD(' ', 7, ' ') || RPAD('S/CARD BUS PAYMENTS', 26, ' ') 
                        || '038759' || RPAD('INVOICES', 12, ' ') || RPAD(to_char(p_date, 'DDMMYY'), 6, ' ') || CHR(10);
         for r_merchants in c_merchants LOOP
@@ -203,70 +307,82 @@ IS
         v_print := v_print || LPAD('0', 10, '0') || LPAD(TO_CHAR(v_sum), 10, '0') || LPAD(TO_CHAR(v_sum), 10, '0');
         v_print := v_print || LPAD(' ', 24, ' ') || LPAD(TO_CHAR(v_cnt), 6, '0');
         
-        utl_file.put_line(v_file, v_print);
+        return v_print;
+    END;
+    
+    PROCEDURE DeskbankFile(p_date IN DATE)
+    IS
+        v_file_name VARCHAR2(50);
+        v_file utl_file.file_type;
+    BEGIN
+        v_file_name := '13029285' || '_DS_' || to_char(p_date, 'DDMMYYYY') || '.dat';
+        v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
+       
+        utl_file.put_line(v_file, PrintDeskbankFile(p_date));
+        
         utl_file.fclose(v_file);
     END;
  
     
-    PROCEDURE DailySettlement IS
+    PROCEDURE DailySettlement 
+    IS    
+        v_db_name VARCHAR2(50):= '13029285' || '_DS_' || to_char(sysdate, 'DDMMYYYY') || '.dat';
+        v_bs_name VARCHAR2(50):= '13029285' || '_DSREP_' || to_char(sysdate, 'DDMMYYYY') || '.rpt';
     BEGIN
         -- FIRST, insert transactions that have not been loaded into FSS_DAILY_TRANSACRIONS
         InsertTransactions;
         
         -- SECOND, settle transactions for today and update LOGREF
         SettleTransactions;
-  
+        
+        DeskbankFile(trunc(sysdate));
+    
+        Send_email(EMAIL_TO,
+                   EMAIL_FROM,
+                   EMAIL_SUBJECT,
+                   EMAIL_TEXT_MSG,
+                   v_bs_name,
+                   PrintSummary(trunc(sysdate), v_bs_name),
+                   v_db_name,
+                   PrintDeskbankFile(trunc(sysdate)));
         -- THIRD, settle transactions for last month and update LOGREF
 --         SettleLastMonthTransactions;
     END;
 
-    PROCEDURE DailyBankingSummary(p_date IN DATE default sysdate) IS
+    PROCEDURE DailyBankingSummary(p_date IN DATE default sysdate) 
+    IS
         v_file_name VARCHAR2(50);
         v_file utl_file.file_type;
-        v_print VARCHAR2(4000);
-        v_sum NUMBER:=0;
-        CURSOR c_merchants IS
-            SELECT s.TOTALAMOUNT, s.MERCHANTID, m.MERCHANTLASTNAME, m.MERCHANTBANKBSB, m.MERCHANTBANKACCNR 
-            FROM FSS_DAILY_SETTLEMENT s JOIN FSS_MERCHANT m on s.MERCHANTID = m.MERCHANTID 
-            WHERE trunc(s.SETTLEDATE) = trunc(p_date);
+        
     BEGIN
         v_file_name := '13029285_DSREP_' || to_char(p_date, 'DDMMYYYY') || '.rpt';
         v_file := utl_file.fopen('ZJ_DIR', v_file_name, 'W');
         
-        v_print := v_print || PrintHeader(p_date);
---        v_sum := PrintMerchants(v_file, p_date);
-        for r_merchants in c_merchants LOOP
-            v_print := v_print ||  RPAD(r_merchants.MERCHANTID, 13, ' ') || ' ' || RPAD(r_merchants.MERCHANTLASTNAME, 31, ' ')
-            || ' ' || RPAD(substr(r_merchants.MERCHANTBANKBSB, 0, 3) || '-' || substr(r_merchants.MERCHANTBANKBSB, 3, 3) || 
-                     r_merchants.MERCHANTBANKACCNR, 16, ' ') || RPAD(' ', 11, ' ') || LPAD(r_merchants.TOTALAMOUNT, 10, ' ') || CHR(10);
-            v_sum := v_sum + r_merchants.TOTALAMOUNT;
-        end loop;
+        utl_file.put_line(v_file, PrintSummary(p_date, v_file_name));
         
-        v_print := v_print || PrintSum(v_sum);
-        v_print := v_print || PrintFooter(v_file_name);
-        
-        utl_file.put_line(v_file, v_print);
-        
-        DeskbankFile(p_date);
         utl_file.fclose(v_file);
     END;
 
+   
     PROCEDURE FRAUDREPORT
     IS
-    v_previous NUMBER:=-1;
-    cursor c_cardid is 
-        select distinct cardid from FSS_DAILY_TRANSACTIONS;
-    cursor c_payments(p_cardid VARCHAR2) is
-        select * from FSS_DAILY_TRANSACTIONS where cardid=p_cardid order by transactiondate ASC;
+        v_previous_amount NUMBER:=-1;
+        v_previous_nr     NUMBER:=-1;
+        cursor c_cardid is 
+            select distinct cardid from FSS_DAILY_TRANSACTIONS;
+        cursor c_payments(p_cardid VARCHAR2) is
+            select * from FSS_DAILY_TRANSACTIONS where cardid=p_cardid order by transactiondate ASC;
     BEGIN
         for r_cardid in c_cardid loop
-            v_previous := -1;
+            v_previous_amount := -1;
             for r_payments in c_payments(r_cardid.cardid) loop
-                if v_previous != -1 then
-                    if r_payments.cardoldvalue != v_previous then
+                if v_previous_amount != -1 then
+                    if r_payments.cardoldvalue != v_previous_amount then
                         -- report fraud
                         INSERT INTO FSS_ABNORMAL_ACCOUNTS (TRANSACTIONNR)
                         VALUES(r_payments.TRANSACTIONNR);
+                        INSERT INTO FSS_ABNORMAL_ACCOUNTS (TRANSACTIONNR)
+                        VALUES(v_previous_nr);
                         COMMIT;
                     end if;
                     if r_payments.cardoldvalue - r_payments.transactionamount != r_payments.cardnewvalue then
@@ -275,11 +391,13 @@ IS
                         VALUES(r_payments.TRANSACTIONNR);
                         COMMIT;
                     end if;
+                    
+                    -- TODO generate report
+                    -- TODO avoid duplicate records
                 end if;
-                v_previous := r_payments.cardnewvalue;
+                v_previous_amount := r_payments.cardnewvalue;
+                v_previous_nr     := r_payments.transactionnr;
             end loop;
         end loop;
-    END;
-    
-        
+    END;        
 END Pkg_FSS_Settlement;

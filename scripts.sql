@@ -82,7 +82,7 @@ truncate table FSS_RUN_TABLE;
 DROP TABLE FSS_RUN_TABLE;
 
 drop trigger tri_settlement_insert;
-COMMIT;
+
 truncate table FSS_ABNORMAL_TRANSACTIONS;
 truncate table FSS_ABNORMAL_ACCOUNTS;
 

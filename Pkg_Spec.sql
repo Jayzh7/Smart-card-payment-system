@@ -4,5 +4,5 @@ AS
     
     PROCEDURE DailyBankingSummary(p_date IN DATE DEFAULT sysdate);
     
---    PROCEDURE FraudReport;
+    PROCEDURE FraudReport;
 END Pkg_FSS_Settlement;
